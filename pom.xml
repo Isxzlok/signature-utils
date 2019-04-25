@@ -31,6 +31,7 @@
         </dependency>
     </dependencies>
 
+
     <developers>
         <developer>
             <name>Niezhiliang</name>
@@ -42,6 +43,7 @@
             <timezone>+8</timezone>
         </developer>
     </developers>
+
 
     <build>
         <plugins>

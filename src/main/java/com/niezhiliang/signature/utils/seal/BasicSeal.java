@@ -1,6 +1,8 @@
-package com.niezhiliang.signature.utils;
+package com.niezhiliang.signature.utils.seal;
 
-
+import com.niezhiliang.signature.utils.SealCircle;
+import com.niezhiliang.signature.utils.SealConfiguration;
+import com.niezhiliang.signature.utils.SealFont;
 import com.niezhiliang.signature.utils.constant.ColorEnum;
 import com.niezhiliang.signature.utils.constant.FontEnum;
 import org.apache.tomcat.util.codec.binary.Base64;
@@ -11,18 +13,130 @@ import java.awt.font.FontRenderContext;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 
 /**
- * @Author NieZhiLiang
- * @Email nzlsgg@163.com
- * @Date 2018/12/10 上午9:54
+ * @Author xiongzhilong
+ * @Email 2584496774@qq.com
+ * @Date create by 2019-04-23 14:20
  */
-public class SealUtils {
+public abstract class BasicSeal {
+
     /**
      * 默认从10x10的位置开始画，防止左上部分画布装不下
      */
     private final static int INIT_BEGIN = 10;
+    /**
+     * 绘制公章
+     * @param companyName
+     * @param colorEnum
+     * @param fontEnum
+     * @param serNo
+     * @param title
+     * @return
+     */
+    public abstract String companySeal(String companyName, ColorEnum colorEnum, FontEnum fontEnum, String serNo, String title) throws Exception;
+
+    /**
+     * 生成印章图片，并保存到指定路径
+     *
+     * @param conf 配置文件F
+     *"data:image/png;base64,"+
+     * @throws Exception 异常
+     */
+    public String buildAndStoreSeal(SealConfiguration conf) throws Exception {
+        return Base64.encodeBase64String(buildBytes(buildSeal(conf)));
+    }
+
+    /**
+     * 生成印章图片的byte数组
+     *
+     * @param image BufferedImage对象
+     *
+     * @return byte数组
+     *
+     * @throws IOException 异常
+     */
+    private byte[] buildBytes(BufferedImage image) throws Exception {
+
+        ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+        //bufferedImage转为byte数组
+        ImageIO.write(image, "png", outStream);
+        return outStream.toByteArray();
+    }
+
+    /**
+     * 生成印章图片
+     *
+     * @param conf 配置文件
+     *
+     * @return BufferedImage对象
+     *
+     * @throws Exception 异常
+     */
+    private BufferedImage buildSeal(SealConfiguration conf) throws Exception {
+
+        //1.画布
+        BufferedImage bi = new BufferedImage(conf.getImageSize(), conf.getImageSize(), BufferedImage.TYPE_4BYTE_ABGR);
+
+        //2.画笔
+        Graphics2D g2d = bi.createGraphics();
+
+        //2.1抗锯齿设置
+        //文本不抗锯齿，否则圆中心的文字会被拉长
+        RenderingHints hints = new RenderingHints(RenderingHints.KEY_TEXT_ANTIALIASING,
+                RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
+        //其他图形抗锯齿
+        hints.put(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2d.setRenderingHints(hints);
+
+        //2.2设置背景透明度
+        g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC, 0));
+
+        //2.3填充矩形
+        g2d.fillRect(0, 0, conf.getImageSize(), conf.getImageSize());
+
+        //2.4重设透明度，开始画图
+        g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC, 1));
+
+        //2.5设置画笔颜色
+        g2d.setPaint(conf.getBackgroudColor());
+
+        //3.画边线圆
+        if (conf.getBorderCircle() != null) {
+            drawCicle(g2d, conf.getBorderCircle(), INIT_BEGIN, INIT_BEGIN);
+        } else {
+            throw new Exception("BorderCircle can not null！");
+        }
+
+        int borderCircleWidth = conf.getBorderCircle().getWidth();
+        int borderCircleHeight = conf.getBorderCircle().getHeight();
+
+        //6.画弧形主文字
+        if (borderCircleHeight != borderCircleWidth) {
+            drawArcFont4Oval(g2d, conf.getBorderCircle(), conf.getMainFont(), true);
+        } else {
+            drawArcFont4Circle(g2d, borderCircleHeight, conf.getMainFont(), true);
+        }
+
+        //7.画弧形副文字
+        if (borderCircleHeight != borderCircleWidth) {
+            drawArcFont4Oval(g2d, conf.getBorderCircle(), conf.getViceFont(), false);
+        } else {
+            drawArcFont4Circle(g2d, borderCircleHeight, conf.getViceFont(), false);
+        }
+
+        //8.画中心字
+        drawFont(g2d, (borderCircleWidth + INIT_BEGIN) * 2, (borderCircleHeight + INIT_BEGIN) * 2,
+                conf.getCenterFont());
+
+        //9.画抬头文字
+        drawFont(g2d, (borderCircleWidth + INIT_BEGIN) * 2, (borderCircleHeight + INIT_BEGIN) * 2, conf.getTitleFont());
+
+        g2d.dispose();
+        return bi;
+    }
 
     /**
      * 绘制圆弧形文字
@@ -32,7 +146,7 @@ public class SealUtils {
      * @param font 字体对象
      * @param isTop 是否字体在上部，否则在下部
      */
-    private static void drawArcFont4Circle(Graphics2D g2d, int circleRadius, SealFont font, boolean isTop) {
+    private void drawArcFont4Circle(Graphics2D g2d, int circleRadius, SealFont font, boolean isTop) {
         if (font == null) {
             return;
         }
@@ -118,6 +232,7 @@ public class SealUtils {
         }
     }
 
+
     /**
      * 绘制椭圆弧形文字
      *
@@ -126,7 +241,7 @@ public class SealUtils {
      * @param font 字体对象
      * @param isTop 是否字体在上部，否则在下部
      */
-    private static void drawArcFont4Oval(Graphics2D g2d, SealCircle circle, SealFont font, boolean isTop) {
+    private void drawArcFont4Oval(Graphics2D g2d, SealCircle circle, SealFont font, boolean isTop) {
         if (font == null) {
             return;
         }
@@ -191,7 +306,7 @@ public class SealUtils {
                 }
             }
             angR = (ang * Math.PI / 180f);
-           // System.out.println("haha："+i + ": "+angR);
+            // System.out.println("haha："+i + ": "+angR);
             Float x = radiusX * (float) Math.cos(angR) + radiusWidth;
             Float y = radiusY * (float) Math.sin(angR) + radiusHeight;
             double qxang = Math.atan2(radiusY * Math.cos(angR), -radiusX * Math.sin(angR));
@@ -235,78 +350,6 @@ public class SealUtils {
             g2d.drawString(c, x.intValue() + INIT_BEGIN, y.intValue() + INIT_BEGIN);
         }
     }
-    /**
-     * 生成印章图片
-     *
-     * @param conf 配置文件
-     *
-     * @return BufferedImage对象
-     *
-     * @throws Exception 异常
-     */
-    private static BufferedImage buildSeal(SealConfiguration conf) throws Exception {
-
-        //1.画布
-        BufferedImage bi = new BufferedImage(conf.getImageSize(), conf.getImageSize(), BufferedImage.TYPE_4BYTE_ABGR);
-
-        //2.画笔
-        Graphics2D g2d = bi.createGraphics();
-
-        //2.1抗锯齿设置
-        //文本不抗锯齿，否则圆中心的文字会被拉长
-        RenderingHints hints = new RenderingHints(RenderingHints.KEY_TEXT_ANTIALIASING,
-                RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
-        //其他图形抗锯齿
-        hints.put(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2d.setRenderingHints(hints);
-
-        //2.2设置背景透明度
-        g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC, 0));
-
-        //2.3填充矩形
-        g2d.fillRect(0, 0, conf.getImageSize(), conf.getImageSize());
-
-        //2.4重设透明度，开始画图
-        g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC, 1));
-
-        //2.5设置画笔颜色
-        g2d.setPaint(conf.getBackgroudColor());
-
-        //3.画边线圆
-        if (conf.getBorderCircle() != null) {
-            drawCicle(g2d, conf.getBorderCircle(), INIT_BEGIN, INIT_BEGIN);
-        } else {
-            throw new Exception("BorderCircle can not null！");
-        }
-
-        int borderCircleWidth = conf.getBorderCircle().getWidth();
-        int borderCircleHeight = conf.getBorderCircle().getHeight();
-
-        //6.画弧形主文字
-        if (borderCircleHeight != borderCircleWidth) {
-            drawArcFont4Oval(g2d, conf.getBorderCircle(), conf.getMainFont(), true);
-        } else {
-            drawArcFont4Circle(g2d, borderCircleHeight, conf.getMainFont(), true);
-        }
-
-        //7.画弧形副文字
-        if (borderCircleHeight != borderCircleWidth) {
-            drawArcFont4Oval(g2d, conf.getBorderCircle(), conf.getViceFont(), false);
-        } else {
-            drawArcFont4Circle(g2d, borderCircleHeight, conf.getViceFont(), false);
-        }
-
-        //8.画中心字
-        drawFont(g2d, (borderCircleWidth + INIT_BEGIN) * 2, (borderCircleHeight + INIT_BEGIN) * 2,
-                conf.getCenterFont());
-
-        //9.画抬头文字
-        drawFont(g2d, (borderCircleWidth + INIT_BEGIN) * 2, (borderCircleHeight + INIT_BEGIN) * 2, conf.getTitleFont());
-
-        g2d.dispose();
-        return bi;
-    }
-
 
     /**
      * 画文字
@@ -316,7 +359,7 @@ public class SealUtils {
      * @param circleHeight 边线圆高度
      * @param font 字体对象
      */
-    private static void drawFont(Graphics2D g2d, int circleWidth, int circleHeight, SealFont font) {
+    private void drawFont(Graphics2D g2d, int circleWidth, int circleHeight, SealFont font) {
         if (font == null) {
             return;
         }
@@ -365,7 +408,7 @@ public class SealUtils {
      * @param g2d 画笔
      * @param circle 圆配置对象
      */
-    private static void drawCicle(Graphics2D g2d, SealCircle circle, int x, int y) {
+    private void drawCicle(Graphics2D g2d, SealCircle circle, int x, int y) {
         if (circle == null) {
             return;
         }
@@ -378,215 +421,7 @@ public class SealUtils {
         g2d.drawOval(x, y, circle.getWidth() * 2, circle.getHeight() * 2);
     }
 
-    /**
-     * 生成印章图片，并保存到指定路径
-     *
-     * @param conf 配置文件F
-     *"data:image/png;base64,"+
-     * @throws Exception 异常
-     */
-    public static String buildAndStoreSeal(SealConfiguration conf) throws Exception {
-        return Base64.encodeBase64String(buildBytes(buildSeal(conf)));
-    }
-    /**
-     * 生成印章图片的byte数组
-     *
-     * @param image BufferedImage对象
-     *
-     * @return byte数组
-     *
-     * @throws IOException 异常
-     */
-    private static byte[] buildBytes(BufferedImage image) throws Exception {
-
-        ByteArrayOutputStream outStream = new ByteArrayOutputStream();
-            //bufferedImage转为byte数组
-            ImageIO.write(image, "png", outStream);
-            return outStream.toByteArray();
-        }
-
-    /**
-     * 绘制椭圆公章
-     * @param companyName 15字以内体验较佳多余15字 字体会变小
-     * @param colorEnum  红色 蓝色 蓝色
-     * @param fontEnum 宋体 方正黑体 楷体
-     * @param serNo 最少4位最多20位
-     * @param title 最多8位
-     * @return
-     * @throws Exception
-     */
-    public static String companyEllipseSeal(String companyName,ColorEnum colorEnum, FontEnum fontEnum,String serNo,String title) throws Exception {
 
 
-        SealConfiguration configuration = new SealConfiguration();
-        /**
-         * 主文字
-         */
-        SealFont mainFont = new SealFont();
-        mainFont.setBold(true);
-        mainFont.setFontFamily(fontEnum.getFont());
-        mainFont.setMarginSize(10);
-        /**************************************************/
-        mainFont.setFontText(companyName);
-        mainFont.setFontSize(25);
-        mainFont.setFontSpace(12.0);
-        if (companyName.length() > 14) {
-            mainFont.setFontSize(20);
-            mainFont.setFontSpace(8.0);
-        }
-
-
-        configuration.setMainFont(mainFont);
-
-        /**
-         * 副文字
-         */
-        if (serNo != null && !"".equals(serNo)) {
-            SealFont viceFont = new SealFont();
-            viceFont.setBold(true);
-            viceFont.setFontFamily(fontEnum.getFont());
-            viceFont.setMarginSize(5);
-            /**************************************************/
-            viceFont.setFontText(serNo);
-            viceFont.setFontSize(13);
-            viceFont.setFontSpace(12.0);
-            /***************************************************/
-
-            configuration.setViceFont(viceFont);
-        }
-
-
-        /**
-         * 抬头文字
-         */
-        if (title != null && !"".equals(title)) {
-            SealFont titleFont = new SealFont();
-            titleFont.setBold(true);
-            titleFont.setFontFamily(fontEnum.getFont());
-            titleFont.setFontSize(22);
-            if (companyName.length() > 14) {
-                titleFont.setFontSize(20);
-            }
-            /**************************************************/
-            titleFont.setFontText(title);
-            titleFont.setMarginSize(68);
-            titleFont.setMarginSize(27);
-
-            configuration.setTitleFont(titleFont);
-        }
-
-        /**
-         * 图片大小
-         */
-        configuration.setImageSize(300);
-        /**
-         * 背景颜色
-         */
-        configuration.setBackgroudColor(colorEnum.getColor());
-        /**
-         * 边线粗细、半径
-         */
-        configuration.setBorderCircle(new SealCircle(4, 140, 100));
-
-        return SealUtils.buildAndStoreSeal(configuration);
-
-    }
-
-    /**
-     * 绘制圆形公章
-     * @param companyName
-     * @param colorEnum
-     * @param fontEnum
-     * @param serNo
-     * @param title
-     * @return
-     * @throws Exception
-     */
-    public static String companyCircleSeal(String companyName,ColorEnum colorEnum, FontEnum fontEnum, String serNo, String title) throws Exception {
-
-        SealConfiguration configuration = new SealConfiguration();
-        /**
-         * 主文字
-         */
-        SealFont mainFont = new SealFont();
-        mainFont.setBold(true);
-        mainFont.setFontFamily(fontEnum.getFont());
-        mainFont.setMarginSize(5);
-        mainFont.setFontText(companyName);
-        mainFont.setFontSize(30);
-        mainFont.setFontSpace(30.0);
-        if (companyName.length() > 14) {
-            mainFont.setFontSize(23);
-            mainFont.setFontSpace(21.0);
-        }
-
-        configuration.setMainFont(mainFont);
-
-        /**
-         * 副文字
-         */
-        if (serNo != null && !"".equals(serNo)) {
-            SealFont viceFont = new SealFont();
-            viceFont.setFontFamily(fontEnum.getFont());
-            viceFont.setMarginSize(-5);
-            /**************************************************/
-            viceFont.setFontText(serNo);
-            viceFont.setBold(false);
-            viceFont.setFontSize(13);
-            viceFont.setFontSpace(10.0);
-            /**************************************************/
-
-            configuration.setViceFont(viceFont);
-        }
-
-        /**
-         * 中心文字
-         */
-        SealFont centerFont = new SealFont();
-        centerFont.setBold(false);
-        centerFont.setFontFamily(fontEnum.getFont());
-        centerFont.setFontText("★");
-        centerFont.setFontSize(70);
-
-        configuration.setCenterFont(centerFont);
-
-        /**
-         * 抬头文字
-         */
-        if (title != null && !"".equals(title)) {
-            SealFont titleFont = new SealFont();
-            titleFont.setBold(true);
-            titleFont.setFontFamily(fontEnum.getFont());
-            titleFont.setFontSize(20);
-            titleFont.setFontText(title);
-            titleFont.setMarginSize(70);
-
-            configuration.setTitleFont(titleFont);
-        }
-
-        /**
-         * 图片大小
-         */
-        configuration.setImageSize(250);
-        /**
-         * 背景颜色
-         */
-        configuration.setBackgroudColor(colorEnum.getColor());
-        /**
-         * 边线粗细、半径
-         */
-        configuration.setBorderCircle(new SealCircle(4, 115, 115));
-
-        return SealUtils.buildAndStoreSeal(configuration);
-    }
-
-//    public static void main(String[] args) {
-//        try {
-//            //System.out.println(companyEllipseSeal("浙江葫芦娃网络集团有限公司",1,2,"1234567899876","合同专用章"));
-//            System.out.println(companyEllipseSeal("浙江葫芦娃网络集团有限公司哈哈哈哈撒地方",ColorEnum.RED,FontEnum.SONGTI,"123456789987","合同专用章"));
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//        }
-//    }
 
 }
